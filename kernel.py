@@ -7,6 +7,8 @@ import argparse
 from tqdm import tqdm
 import random
 
+torch.set_printoptions(sci_mode=False)
+
 from models import modelClass
 from utils import add_shared_args
 
@@ -16,7 +18,10 @@ class kernelTrainingDataset(Dataset):
 
         model = modelClass[args.model](args.space_dim)
         param_num = sum([p.numel() for p in model.parameters() if p.requires_grad==True ])
-        data_path = f"./datasets/data_{args.model}_{args.optimizer}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
+        if args.toy_data:
+            data_path = "./datasets/data_toy.pkl"
+        else:
+            data_path = f"./datasets/data_{args.model}_{args.optimizer}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
 
         print("loading", data_path)
         with open(data_path, "rb") as f:
@@ -38,13 +43,9 @@ class kernelTrainingDataset(Dataset):
                 train_idx = (train_input * temp).sum(dim=1)
                 test_idx = (test_input * temp).sum(dim=1)
 
-                # train_num = train_idx.size(0)
-                # test_idx = test_idx[:train_num].contiguous()
-                # pred = pred[:train_num].contiguous()
-
                 self.instances.append((train_idx, train_label, test_idx, pred))
 
-        self.instances = self.instances[:32]
+        # self.instances = self.instances[:32]
 
     def __len__(self):
         return len(self.instances)
@@ -55,7 +56,7 @@ class kernelTrainingDataset(Dataset):
 class kernelHolder(nn.Module):
     def __init__(self, space_dim, max_thr, lambda_):
         super().__init__()
-        self.feature_map = nn.Parameter(torch.randn(2**space_dim, 2**space_dim))    # columns are phi(x)    /(2**(space_dim/4))
+        self.feature_map = nn.Parameter(torch.randn(space_dim, 2**space_dim))    # columns are phi(x)    /(2**(space_dim/4))
         self.max_threshold = max_thr
         self.lambda_ = lambda_
 
@@ -67,10 +68,10 @@ class kernelHolder(nn.Module):
 
         kernel_m_train_inv = torch.inverse(kernel_m_train)
 
-        alpha = torch.bmm(kernel_m_train_inv, train_label.unsqueeze(-1)) / math.sqrt(train_idx.size(1))
+        alpha = torch.bmm(kernel_m_train_inv, train_label.unsqueeze(-1)) # / math.sqrt(train_idx.size(1))
 
         kernel_m_test = torch.bmm(phi_x, self.feature_map.T[test_idx].transpose(1,2)) # assume all test idx not in train idx
-        kernel_pred = torch.bmm(alpha.transpose(1,2), kernel_m_test) / math.sqrt(train_idx.size(1))
+        kernel_pred = torch.bmm(alpha.transpose(1,2), kernel_m_test) # / math.sqrt(train_idx.size(1))
 
         return kernel_pred.squeeze(1)
     
@@ -83,8 +84,8 @@ class kernelHolder(nn.Module):
 
 parser = argparse.ArgumentParser()
 parser = add_shared_args(parser)
-parser.add_argument("--batch_size", type=int, default=32)
-parser.add_argument("--num_steps", type=int, default=2000)
+parser.add_argument("--batch_size", type=int, default=64)
+parser.add_argument("--num_steps", type=int, default=20000)
 parser.add_argument("--max_thr", type=float, default=200)
 parser.add_argument("--lambda_", type=float, default=0.1)
 parser.add_argument("--lr", type=float, default=1e-3)
@@ -114,9 +115,10 @@ while flag:
         loss = loss_func(kernel_pred, model_pred)
 
         loss_list.append(loss.item())
-        if torch.rand(()) < 0.01:
-            print(kernel_pred[0])
-            print(model_pred[0])
+        # if torch.rand(()) < 0.01:
+        #     print(kernel_pred[0])
+        #     print(model_pred[0])
+            
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
@@ -129,10 +131,29 @@ while flag:
             flag = False
             break
         
-    
-        
-print(kernel_holder.get_kernel_matrix())
+sampled_numbers = torch.arange(2**args.space_dim)
+binary_numbers = []
+for i in range(args.space_dim-1, -1, -1):
+    binary_numbers.append( (sampled_numbers >= 2**i).long() )
+    sampled_numbers = torch.where(sampled_numbers >= 2**i, sampled_numbers-2**i, sampled_numbers)
 
+binary_numbers = torch.vstack(binary_numbers)
+true_K = torch.mm(binary_numbers.T, binary_numbers).float()
+print("==============")
+estimate_K = kernel_holder.get_kernel_matrix()
+estimate_K = estimate_K/torch.linalg.norm(estimate_K)*torch.linalg.norm(true_K)
+print(torch.abs(true_K - estimate_K).mean())
+print("==============")
+print("diagonal")
+print(estimate_K.diag())
+print("compare first three rows")
+print(true_K[:3])
+print(estimate_K[:3])
+
+print(kernel_holder.feature_map[:, :4].data)
+
+# loss 0.04, abs diff 0.32
+# loss 0.002, abs diff 0.02
 # print(kernel_holder.feature_map.data[:, 1])
 # print(kernel_holder.feature_map.data[:, 5])
 # print(kernel_holder.feature_map.data[:, 9])

@@ -10,4 +10,5 @@ def add_shared_args(parser):
     
     parser.add_argument("--dataset_num", type=int, default=1024)
 
+    parser.add_argument("--toy_data", action="store_true")
     return parser

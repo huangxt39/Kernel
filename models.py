@@ -35,6 +35,7 @@ class simpleTransformer(nn.Module):
 
         x = x[:, -1, :]
         x = torch.sigmoid(self.head(x).squeeze(-1))
+        # x = self.head(x).squeeze(-1)
 
         return x
     
