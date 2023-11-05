@@ -10,18 +10,17 @@ import random
 torch.set_printoptions(sci_mode=False)
 
 from models import modelClass
-from utils import add_shared_args
+from utils import add_shared_args, log_toy_estimate_perf, log_estimate_perf
 
 class kernelTrainingDataset(Dataset):
     def __init__(self, args) -> None:
-        super().__init__()
 
         model = modelClass[args.model](args.space_dim)
         param_num = sum([p.numel() for p in model.parameters() if p.requires_grad==True ])
         if args.toy_data:
             data_path = "./datasets/data_toy.pkl"
         else:
-            data_path = f"./datasets/data_{args.model}_{args.optimizer}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
+            data_path = f"./datasets/data_{args.model}_{args.optimizer}_wd{args.weight_decay}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
 
         print("loading", data_path)
         with open(data_path, "rb") as f:
@@ -115,9 +114,6 @@ while flag:
         loss = loss_func(kernel_pred, model_pred)
 
         loss_list.append(loss.item())
-        # if torch.rand(()) < 0.01:
-        #     print(kernel_pred[0])
-        #     print(model_pred[0])
             
         optimizer.zero_grad()
         loss.backward()
@@ -131,29 +127,10 @@ while flag:
             flag = False
             break
         
-sampled_numbers = torch.arange(2**args.space_dim)
-binary_numbers = []
-for i in range(args.space_dim-1, -1, -1):
-    binary_numbers.append( (sampled_numbers >= 2**i).long() )
-    sampled_numbers = torch.where(sampled_numbers >= 2**i, sampled_numbers-2**i, sampled_numbers)
-
-binary_numbers = torch.vstack(binary_numbers)
-true_K = torch.mm(binary_numbers.T, binary_numbers).float()
-print("==============")
-estimate_K = kernel_holder.get_kernel_matrix()
-estimate_K = estimate_K/torch.linalg.norm(estimate_K)*torch.linalg.norm(true_K)
-print(torch.abs(true_K - estimate_K).mean())
-print("==============")
-print("diagonal")
-print(estimate_K.diag())
-print("compare first three rows")
-print(true_K[:3])
-print(estimate_K[:3])
-
-print(kernel_holder.feature_map[:, :4].data)
-
-# loss 0.04, abs diff 0.32
-# loss 0.002, abs diff 0.02
+if args.toy_data:
+    log_toy_estimate_perf(args, kernel_holder)
+else:
+    log_estimate_perf(kernel_pred, model_pred)
 # print(kernel_holder.feature_map.data[:, 1])
 # print(kernel_holder.feature_map.data[:, 5])
 # print(kernel_holder.feature_map.data[:, 9])

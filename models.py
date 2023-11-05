@@ -34,8 +34,8 @@ class simpleTransformer(nn.Module):
         x = self.encoder(x) # batch_size, seq_len+1, d_model
 
         x = x[:, -1, :]
-        x = torch.sigmoid(self.head(x).squeeze(-1))
-        # x = self.head(x).squeeze(-1)
+        # x = torch.sigmoid(self.head(x).squeeze(-1))
+        x = self.head(x).squeeze(-1)
 
         return x
     
@@ -65,4 +65,4 @@ class simpleLSTM(nn.Module):
 
 
 modelClass = {"transformer": simpleTransformer, "lstm": simpleLSTM}
-optClass = {'sgd': torch.optim.SGD, 'adam': torch.optim.Adam}
+optClass = {'sgd': torch.optim.SGD, 'adam': torch.optim.Adam, 'adamw': torch.optim.AdamW}

@@ -59,23 +59,23 @@ def sample_dataset(train_num, test_num, space_dim):
     train_input = binary_numbers[:train_num].contiguous()
     test_input = binary_numbers[train_num:].contiguous()
 
-    train_label = (torch.rand(train_num) > 0.5).float()
-    # train_label = torch.randn(train_num)
+    # train_label = (torch.rand(train_num) > 0.5).float()
+    train_label = torch.randn(train_num)
 
     return train_input, train_label, test_input
 
 
-def train(train_input, train_label, model, num_epoch, optClass, lr, device):
-    loss_func = nn.BCELoss()
-    # loss_func = nn.MSELoss()
-    optimizer = optClass(model.parameters(), lr=lr)
+def train(train_input, train_label, model, optClass, device, args):
+    # loss_func = nn.BCELoss()
+    loss_func = nn.MSELoss()
+    optimizer = optClass(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
 
     model.train()
     model = model.to(device)
     train_input, train_label = train_input.to(device), train_label.to(device)
 
     loss_list = []
-    for i in range(num_epoch):
+    for i in range(args.num_epoch):
         x = model(train_input)
         loss = loss_func(x, train_label)
 
@@ -107,7 +107,7 @@ def make_data_point(args):
     model = modelClass[args.model](args.space_dim)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
-    model, final_loss = train(train_input, train_label, model, args.num_epoch, optClass[args.optimizer], args.lr, device)
+    model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
     pred = predict(test_input, model, device)
 
     return train_input, train_label, test_input, pred, final_loss
@@ -137,40 +137,8 @@ print(not_fitted / args.dataset_num)
 if args.toy_data:
     data_path = "./datasets/data_toy.pkl"
 else:
-    data_path = f"./datasets/data_{args.model}_{args.optimizer}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
+    data_path = f"./datasets/data_{args.model}_{args.optimizer}_wd{args.weight_decay}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
 
 with open(data_path, "wb") as f:
     pickle.dump(data_points, f)
 
-
-# train 5
-    # 25537
-    # 0.55,     0.03
-
-    # 150209
-    # 0.185,    0.025
-
-
-    # LSTM
-
-    # 17025
-    # 0.04
-
-    # 100097
-    # 0.0
-
-# train 10
-    # 25537
-    # 0.86,      0.085
-
-    # 150209
-    # 0.595,     0.16
-
-
-    # LSTM
-
-    # 17025
-    # 0.165
-
-    # 100097
-    # 0.115
