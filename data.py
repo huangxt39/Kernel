@@ -60,7 +60,8 @@ def sample_dataset(train_num, test_num, space_dim):
     test_input = binary_numbers[train_num:].contiguous()
 
     # train_label = (torch.rand(train_num) > 0.5).float()
-    train_label = torch.randn(train_num)
+    # train_label = torch.randn(train_num)
+    train_label = torch.rand(train_num) * 2 - 1
 
     return train_input, train_label, test_input
 
@@ -80,7 +81,7 @@ def train(train_input, train_label, model, optClass, device, args):
         loss = loss_func(x, train_label)
 
         loss_list.append(loss.item())
-        if loss.item() < 1e-2:
+        if loss.item() < args.threshold:
             break
 
         optimizer.zero_grad()
@@ -116,6 +117,7 @@ parser = argparse.ArgumentParser()
 parser = add_shared_args(parser)    
 parser.add_argument("--num_epoch", type=int, default=200)
 parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--threshold", type=float, default=1e-2)
 args = parser.parse_args()
 
 data_points = []
@@ -125,7 +127,7 @@ for i in tqdm(range(args.dataset_num)):
         data_points.append(make_toy_linear_data(args))
     else:
         data_points.append(make_data_point(args))
-    if data_points[-1][-1] > 1e-2:
+    if data_points[-1][-1] > args.threshold:
         not_fitted += 1
 
 

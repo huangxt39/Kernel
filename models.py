@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 
 class simpleTransformer(nn.Module):
-    def __init__(self, max_len, d_model=64, nhead=2, num_layers=3) -> None:
+    def __init__(self, max_len, d_model=128, nhead=4, num_layers=3) -> None:
         super().__init__()
 
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)

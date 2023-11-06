@@ -79,7 +79,10 @@ class kernelHolder(nn.Module):
 
     def get_kernel_matrix(self):
         with torch.no_grad():
-            return (torch.mm(self.feature_map.T, self.feature_map) + self.lambda_ * torch.eye(self.feature_map.size(1)))
+            return (torch.mm(self.feature_map.T, self.feature_map) + 
+                    self.lambda_ * torch.eye(self.feature_map.size(1), 
+                                            dtype=self.feature_map.dtype, 
+                                            device=self.feature_map.device))
 
 parser = argparse.ArgumentParser()
 parser = add_shared_args(parser)
@@ -94,7 +97,8 @@ kernel_dataset = kernelTrainingDataset(args)
 print(len(kernel_dataset))
 dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cuda' if torch.cuda.is_available() else 'cpu'
+device = 'cpu'
 
 kernel_holder = kernelHolder(args.space_dim, max_thr=args.max_thr, lambda_=args.lambda_).to(device)
 print(kernel_holder.get_kernel_matrix().size())
