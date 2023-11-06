@@ -9,18 +9,12 @@ import random
 
 torch.set_printoptions(sci_mode=False)
 
-from models import modelClass
-from utils import add_shared_args, log_toy_estimate_perf, log_estimate_perf
+from utils import add_shared_args, log_toy_estimate_perf, log_estimate_perf, convert_args_to_path
 
 class kernelTrainingDataset(Dataset):
     def __init__(self, args) -> None:
-
-        model = modelClass[args.model](args.space_dim)
-        param_num = sum([p.numel() for p in model.parameters() if p.requires_grad==True ])
-        if args.toy_data:
-            data_path = "./datasets/data_toy.pkl"
-        else:
-            data_path = f"./datasets/data_{args.model}_{args.optimizer}_wd{args.weight_decay}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
+        
+        data_path = convert_args_to_path(args)
 
         print("loading", data_path)
         with open(data_path, "rb") as f:
@@ -90,8 +84,10 @@ parser.add_argument("--batch_size", type=int, default=64)
 parser.add_argument("--num_steps", type=int, default=20000)
 parser.add_argument("--max_thr", type=float, default=200)
 parser.add_argument("--lambda_", type=float, default=0.1)
-parser.add_argument("--lr", type=float, default=1e-3)
+parser.add_argument("--kernel_lr", type=float, default=1e-3)
 args = parser.parse_args()
+assert args.arch is not None
+
 
 kernel_dataset = kernelTrainingDataset(args)
 print(len(kernel_dataset))
@@ -103,7 +99,7 @@ device = 'cpu'
 kernel_holder = kernelHolder(args.space_dim, max_thr=args.max_thr, lambda_=args.lambda_).to(device)
 print(kernel_holder.get_kernel_matrix().size())
 
-optimizer = torch.optim.Adam(kernel_holder.parameters(), lr=args.lr)
+optimizer = torch.optim.Adam(kernel_holder.parameters(), lr=args.kernel_lr)
 
 loss_func = nn.MSELoss()
 

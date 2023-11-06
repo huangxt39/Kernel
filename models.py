@@ -3,9 +3,9 @@ import torch.nn as nn
 import math
 
 class simpleTransformer(nn.Module):
-    def __init__(self, max_len, d_model=128, nhead=4, num_layers=3) -> None:
+    def __init__(self, max_len, arch) -> None:
         super().__init__()
-
+        d_model, nhead, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)
 
         self.make_pos_emb(d_model, max_len+1)   # consider cls

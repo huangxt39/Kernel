@@ -6,7 +6,7 @@ import numpy as np
 from tqdm import tqdm
 
 from models import modelClass, optClass
-from utils import add_shared_args
+from utils import add_shared_args, convert_args_to_path
 
 def make_toy_linear_data(args):
     train_num, test_num, space_dim = args.train_num, args.test_num, args.space_dim
@@ -69,7 +69,7 @@ def sample_dataset(train_num, test_num, space_dim):
 def train(train_input, train_label, model, optClass, device, args):
     # loss_func = nn.BCELoss()
     loss_func = nn.MSELoss()
-    optimizer = optClass(model.parameters(), lr=args.lr, weight_decay=args.weight_decay)
+    optimizer = optClass(model.parameters(), lr=args.model_lr, weight_decay=args.weight_decay)
 
     model.train()
     model = model.to(device)
@@ -105,7 +105,7 @@ def predict(test_input, model, device):
 
 def make_data_point(args):
     train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
-    model = modelClass[args.model](args.space_dim)
+    model = modelClass[args.model](args.space_dim, args.arch)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
@@ -115,10 +115,8 @@ def make_data_point(args):
 
 parser = argparse.ArgumentParser()   
 parser = add_shared_args(parser)    
-parser.add_argument("--num_epoch", type=int, default=200)
-parser.add_argument("--lr", type=float, default=1e-3)
-parser.add_argument("--threshold", type=float, default=1e-2)
 args = parser.parse_args()
+assert args.arch is not None
 
 data_points = []
 not_fitted = 0
@@ -130,17 +128,9 @@ for i in tqdm(range(args.dataset_num)):
     if data_points[-1][-1] > args.threshold:
         not_fitted += 1
 
-
-model = modelClass[args.model](args.space_dim)
-param_num = sum([p.numel() for p in model.parameters() if p.requires_grad==True ])
-print(param_num)
 print(not_fitted / args.dataset_num)
 
-if args.toy_data:
-    data_path = "./datasets/data_toy.pkl"
-else:
-    data_path = f"./datasets/data_{args.model}_{args.optimizer}_wd{args.weight_decay}_param{param_num}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
-
+data_path = convert_args_to_path(args)
 with open(data_path, "wb") as f:
     pickle.dump(data_points, f)
 
