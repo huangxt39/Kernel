@@ -13,6 +13,7 @@ def add_shared_args(parser):
 
     parser.add_argument("--num_epoch", type=int, default=200)
     parser.add_argument("--model_lr", type=float, default=1e-3)
+    parser.add_argument("--shrink", type=float, default=1.0)
     
     parser.add_argument("--arch", type=str) #256-6-3  hdim, nhead, nlayer
 
@@ -26,7 +27,7 @@ def convert_args_to_path(args):
     if args.toy_data:
         data_path = "./datasets/data_toy.pkl"
     else:
-        data_path = f"./datasets/data_{args.model}-{args.arch}_{args.optimizer}_wd{args.weight_decay}_thr{args.threshold}_{args.model_lr}*{args.num_epoch}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
+        data_path = f"./datasets/data_{args.model}-{args.arch}_{args.optimizer}_wd{args.weight_decay}_thr{args.threshold}_{args.model_lr}*{args.num_epoch}_shr{args.shrink}_dim{args.space_dim}_train{args.train_num}_test{args.test_num}_size{args.dataset_num}.pkl"
     return data_path
 
 def log_toy_estimate_perf(args, kernel_holder):

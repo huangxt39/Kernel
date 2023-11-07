@@ -3,7 +3,7 @@ import torch.nn as nn
 import math
 
 class simpleTransformer(nn.Module):
-    def __init__(self, max_len, arch) -> None:
+    def __init__(self, max_len, arch, shrink) -> None:
         super().__init__()
         d_model, nhead, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)
@@ -14,6 +14,9 @@ class simpleTransformer(nn.Module):
         self.encoder = nn.TransformerEncoder(encoder_layer=layer, num_layers=num_layers)
 
         self.head = nn.Linear(d_model, 1)
+
+        for p in self.parameters():
+            p.data = p.data * shrink
 
     def make_pos_emb(self, d_model, max_len):
 

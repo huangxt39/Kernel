@@ -105,7 +105,7 @@ def predict(test_input, model, device):
 
 def make_data_point(args):
     train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
-    model = modelClass[args.model](args.space_dim, args.arch)
+    model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
     model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
