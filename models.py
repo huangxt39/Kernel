@@ -65,7 +65,27 @@ class simpleLSTM(nn.Module):
 
         return x
     
+class DNN(nn.Module):
+    def __init__(self, max_len, arch, shrink) -> None:
+        super().__init__()
+        hidden_d, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
 
+        assert num_layers >= 2
 
-modelClass = {"transformer": simpleTransformer, "lstm": simpleLSTM}
+        layers = [nn.Linear(max_len, hidden_d)]
+        for i in range(num_layers-2):
+            layers.append(nn.ReLU())
+            layers.append(nn.Linear(hidden_d, hidden_d))
+        layers.append(nn.ReLU())
+        layers.append(nn.Linear(hidden_d, 1))
+
+        self.net = nn.Sequential(*layers)
+        # for p in self.parameters():
+        #     p.data = torch.zeros_like(p.data)
+
+    def forward(self, inputs):
+        # inputs: batch_size, seq_len
+        return self.net(inputs.float()).squeeze(-1)
+
+modelClass = {"transformer": simpleTransformer, "lstm": simpleLSTM, "dnn": DNN}
 optClass = {'sgd': torch.optim.SGD, 'adam': torch.optim.Adam, 'adamw': torch.optim.AdamW}

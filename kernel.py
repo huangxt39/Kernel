@@ -32,7 +32,7 @@ class kernelTrainingDataset(Dataset):
         # convert bits to integers
         temp = 2**torch.arange(args.space_dim-1, -1, -1).unsqueeze(0)
         for train_input, train_label, test_input, pred, final_loss in data:
-            if final_loss < 1e-2:
+            if final_loss < args.threshold:
                 train_idx = (train_input * temp).sum(dim=1)
                 test_idx = (test_input * temp).sum(dim=1)
 

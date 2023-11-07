@@ -6,10 +6,10 @@ def add_shared_args(parser):
     parser.add_argument("--test_num", type=int, default=50)
     parser.add_argument("--space_dim", type=int, default=6)
     
-    parser.add_argument("--model", type=str, default="transformer", choices=["transformer", "lstm"])
+    parser.add_argument("--model", type=str, default="transformer", choices=["transformer", "lstm", "dnn"])
     parser.add_argument("--optimizer", type=str, default="adam", choices=["sgd", "adam", "adamw"])
     parser.add_argument("--weight_decay", type=float, default=0.0)
-    parser.add_argument("--threshold", type=float, default=1e-2)
+    parser.add_argument("--threshold", type=float, default=1e-4)
 
     parser.add_argument("--num_epoch", type=int, default=200)
     parser.add_argument("--model_lr", type=float, default=1e-3)
