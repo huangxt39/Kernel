@@ -47,11 +47,14 @@ class kernelTrainingDataset(Dataset):
         return self.instances[idx]
     
 class kernelHolder(nn.Module):
-    def __init__(self, space_dim, max_thr, lambda_):
+    def __init__(self, args):
         super().__init__()
-        self.feature_map = nn.Parameter(torch.randn(space_dim, 2**space_dim))    # columns are phi(x)    /(2**(space_dim/4))
-        self.max_threshold = max_thr
-        self.lambda_ = lambda_
+        input_space = 2**args.space_dim
+        feature_len = args.space_dim if args.toy_data else 2**args.space_dim 
+        # feature_len = args.space_dim 0.03
+        self.feature_map = nn.Parameter(torch.randn(feature_len, input_space))    # columns are phi(x)    /(2**(space_dim/4))
+        self.max_threshold = args.max_thr
+        self.lambda_ = args.lambda_
 
 
     def forward(self, train_idx, train_label, test_idx):
@@ -96,7 +99,7 @@ dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True
 # device = 'cuda' if torch.cuda.is_available() else 'cpu'
 device = 'cpu'
 
-kernel_holder = kernelHolder(args.space_dim, max_thr=args.max_thr, lambda_=args.lambda_).to(device)
+kernel_holder = kernelHolder(args).to(device)
 print(kernel_holder.get_kernel_matrix().size())
 
 optimizer = torch.optim.Adam(kernel_holder.parameters(), lr=args.kernel_lr)
