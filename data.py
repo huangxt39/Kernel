@@ -122,29 +122,31 @@ def make_data_point(args):
 
     return train_input, train_label, test_input, pred, final_loss, param_norm
 
-parser = argparse.ArgumentParser()   
-parser = add_shared_args(parser)    
-args = parser.parse_args()
-assert args.arch is not None
+if __name__ == "__main__":
 
-data_points = []
-not_fitted = 0
-norms = []
-for i in tqdm(range(args.dataset_num)):
-    if args.toy_data:
-        data_points.append(make_toy_linear_data(args))
-    else:
-        data_points.append(make_data_point(args))
-        if data_points[-1][-2] > args.threshold:
-            not_fitted += 1
-        norms.append(data_points[-1][-1])
+    parser = argparse.ArgumentParser()   
+    parser = add_shared_args(parser)    
+    args = parser.parse_args()
+    assert args.arch is not None
 
-print("mean norm")
-print(torch.tensor(norms).mean().item())
-print("unfit rate")
-print(not_fitted / args.dataset_num)
+    data_points = []
+    not_fitted = 0
+    norms = []
+    for i in tqdm(range(args.dataset_num)):
+        if args.toy_data:
+            data_points.append(make_toy_linear_data(args))
+        else:
+            data_points.append(make_data_point(args))
+            if data_points[-1][-2] > args.threshold:
+                not_fitted += 1
+            norms.append(data_points[-1][-1])
 
-data_path = convert_args_to_path(args)
-with open(data_path, "wb") as f:
-    pickle.dump(data_points, f)
+    print("mean norm")
+    print(torch.tensor(norms).mean().item())
+    print("unfit rate")
+    print(not_fitted / args.dataset_num)
+
+    data_path = convert_args_to_path(args)
+    with open(data_path, "wb") as f:
+        pickle.dump(data_points, f)
 
