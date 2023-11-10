@@ -31,12 +31,12 @@ class kernelTrainingDataset(Dataset):
         self.instances = []
         # convert bits to integers
         temp = 2**torch.arange(args.space_dim-1, -1, -1).unsqueeze(0)
-        for train_input, train_label, test_input, pred, final_loss in data:
-            if final_loss < args.threshold:
-                train_idx = (train_input * temp).sum(dim=1)
-                test_idx = (test_input * temp).sum(dim=1)
+        for train_input, train_label, test_input, pred, final_loss, norm in data:
+            # if final_loss < args.threshold:
+            train_idx = (train_input * temp).sum(dim=1)
+            test_idx = (test_input * temp).sum(dim=1)
 
-                self.instances.append((train_idx, train_label, test_idx, pred))
+            self.instances.append((train_idx, train_label, test_idx, pred))
 
         # self.instances = self.instances[:32]
 
@@ -84,7 +84,7 @@ class kernelHolder(nn.Module):
 parser = argparse.ArgumentParser()
 parser = add_shared_args(parser)
 parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--num_steps", type=int, default=20000)
+parser.add_argument("--num_step", type=int, default=20000)
 parser.add_argument("--max_thr", type=float, default=200)
 parser.add_argument("--lambda_", type=float, default=0.1)
 parser.add_argument("--kernel_lr", type=float, default=1e-3)
@@ -96,8 +96,8 @@ kernel_dataset = kernelTrainingDataset(args)
 print(len(kernel_dataset))
 dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True)
 
-# device = 'cuda' if torch.cuda.is_available() else 'cpu'
-device = 'cpu'
+device = 'cuda' if torch.cuda.is_available() else 'cpu'
+# device = 'cpu' 
 
 kernel_holder = kernelHolder(args).to(device)
 print(kernel_holder.get_kernel_matrix().size())
@@ -126,7 +126,7 @@ while flag:
         if total_steps % 50 == 0:
             print(sum(loss_list)/len(loss_list))
             loss_list = []
-        if total_steps >= args.num_steps:
+        if total_steps >= args.num_step:
             flag = False
             break
         

@@ -4,6 +4,7 @@ import argparse
 import pickle
 import numpy as np
 from tqdm import tqdm
+import math
 
 from models import modelClass, optClass
 from utils import add_shared_args, convert_args_to_path
@@ -111,7 +112,15 @@ def make_data_point(args):
     model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
     pred = predict(test_input, model, device)
 
-    return train_input, train_label, test_input, pred, final_loss
+    num_param = 0
+    param_sqaure_sum = 0
+    for p in model.parameters():
+        if p.requires_grad:
+            param_sqaure_sum += (p.data**2).sum().item()
+            num_param += p.numel()
+    param_norm = math.sqrt(param_sqaure_sum / num_param)
+
+    return train_input, train_label, test_input, pred, final_loss, param_norm
 
 parser = argparse.ArgumentParser()   
 parser = add_shared_args(parser)    
@@ -120,14 +129,19 @@ assert args.arch is not None
 
 data_points = []
 not_fitted = 0
+norms = []
 for i in tqdm(range(args.dataset_num)):
     if args.toy_data:
         data_points.append(make_toy_linear_data(args))
     else:
         data_points.append(make_data_point(args))
-    if data_points[-1][-1] > args.threshold:
-        not_fitted += 1
+        if data_points[-1][-2] > args.threshold:
+            not_fitted += 1
+        norms.append(data_points[-1][-1])
 
+print("mean norm")
+print(torch.tensor(norms).mean().item())
+print("unfit rate")
 print(not_fitted / args.dataset_num)
 
 data_path = convert_args_to_path(args)

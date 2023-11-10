@@ -80,8 +80,9 @@ class DNN(nn.Module):
         layers.append(nn.Linear(hidden_d, 1))
 
         self.net = nn.Sequential(*layers)
-        # for p in self.parameters():
-        #     p.data = torch.zeros_like(p.data)
+        for p in self.parameters():
+            p.data = p.data * shrink
+        # self.net[0].weight.data = self.net[0].weight.data * shrink
 
     def forward(self, inputs):
         # inputs: batch_size, seq_len
