@@ -21,6 +21,9 @@ def add_shared_args(parser):
 
     parser.add_argument("--toy_data", action="store_true")
 
+    parser.add_argument("--known_func", action="store_true")
+    parser.add_argument("--max_degree", type=int)
+
     return parser
 
 def convert_args_to_path(args):

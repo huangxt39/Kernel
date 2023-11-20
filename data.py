@@ -5,20 +5,29 @@ import pickle
 import numpy as np
 from tqdm import tqdm
 import math
+import itertools
+import random
 
 from models import modelClass, optClass
 from utils import add_shared_args, convert_args_to_path
 
-def make_toy_linear_data(args):
-    train_num, test_num, space_dim = args.train_num, args.test_num, args.space_dim
-    sampled_numbers = torch.tensor(np.random.choice(2**space_dim, train_num+test_num, replace=False))
+def random_binary_no_repeat(power, num):
+    sampled_numbers = torch.tensor(np.random.choice(2**power, num, replace=False))
 
     binary_numbers = []
-    for i in range(space_dim-1, -1, -1):
+    for i in range(power-1, -1, -1):
         binary_numbers.append( (sampled_numbers >= 2**i).long() )
         sampled_numbers = torch.where(sampled_numbers >= 2**i, sampled_numbers-2**i, sampled_numbers)
 
     binary_numbers = torch.vstack(binary_numbers).T
+
+    return binary_numbers
+
+
+def make_toy_linear_data(args):
+    train_num, test_num, space_dim = args.train_num, args.test_num, args.space_dim
+
+    binary_numbers = random_binary_no_repeat(space_dim, train_num+test_num)
 
     train_input = binary_numbers[:train_num].contiguous()
     test_input = binary_numbers[train_num:].contiguous()
@@ -48,14 +57,8 @@ def make_toy_linear_data(args):
     return train_input, train_label, test_input, pred, 0.0
 
 def sample_dataset(train_num, test_num, space_dim):
-    sampled_numbers = torch.tensor(np.random.choice(2**space_dim, train_num+test_num, replace=False))
-
-    binary_numbers = []
-    for i in range(space_dim-1, -1, -1):
-        binary_numbers.append( (sampled_numbers >= 2**i).long() )
-        sampled_numbers = torch.where(sampled_numbers >= 2**i, sampled_numbers-2**i, sampled_numbers)
-
-    binary_numbers = torch.vstack(binary_numbers).T
+    
+    binary_numbers = random_binary_no_repeat(space_dim, train_num+test_num)
 
     train_input = binary_numbers[:train_num].contiguous()
     test_input = binary_numbers[train_num:].contiguous()
@@ -65,6 +68,37 @@ def sample_dataset(train_num, test_num, space_dim):
     train_label = torch.rand(train_num) * 2 - 1
 
     return train_input, train_label, test_input
+
+def sample_dataset_known_function(train_num, test_num, space_dim, max_degree, term_per_degree=3):
+    # sample a function
+    assert max_degree <= space_dim
+    func_terms = []
+    for i in range(1, max_degree+1):
+        combs = list(itertools.combinations(range(space_dim), i))
+        random.shuffle(combs)
+        chosen_terms = combs[:term_per_degree]
+        for t in chosen_terms:
+            func_terms.append((random.uniform(-1.0, 1.0), t))
+    
+    # sample data points
+
+    binary_numbers = random_binary_no_repeat(space_dim, train_num+test_num)
+
+    # evaluate with function to get labels
+    labels = torch.zeros(len(binary_numbers))
+    one_minus_one_numbers = binary_numbers.float() * 2 - 1
+    for coef, vars in func_terms:
+        labels += (coef * one_minus_one_numbers[:, vars].prod(dim=1))
+
+    train_input = binary_numbers[:train_num].contiguous()
+    test_input = binary_numbers[train_num:].contiguous()
+    
+    train_label = labels[:train_num].contiguous()
+    test_label = labels[train_num:].contiguous()
+
+    return train_input, train_label, test_input, test_label
+
+
 
 
 def train(train_input, train_label, model, optClass, device, args):
@@ -105,7 +139,10 @@ def predict(test_input, model, device):
 
 
 def make_data_point(args):
-    train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
+    if args.known_func:
+        train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree)
+    else:
+        train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
     model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
 
@@ -122,29 +159,31 @@ def make_data_point(args):
 
     return train_input, train_label, test_input, pred, final_loss, param_norm
 
-parser = argparse.ArgumentParser()   
-parser = add_shared_args(parser)    
-args = parser.parse_args()
-assert args.arch is not None
+# parser = argparse.ArgumentParser()   
+# parser = add_shared_args(parser)    
+# args = parser.parse_args()
+# assert args.arch is not None
 
-data_points = []
-not_fitted = 0
-norms = []
-for i in tqdm(range(args.dataset_num)):
-    if args.toy_data:
-        data_points.append(make_toy_linear_data(args))
-    else:
-        data_points.append(make_data_point(args))
-        if data_points[-1][-2] > args.threshold:
-            not_fitted += 1
-        norms.append(data_points[-1][-1])
+# data_points = []
+# not_fitted = 0
+# norms = []
+# for i in tqdm(range(args.dataset_num)):
+#     if args.toy_data:
+#         data_points.append(make_toy_linear_data(args))
+#     else:
+#         data_points.append(make_data_point(args))
+#         if data_points[-1][-2] > args.threshold:
+#             not_fitted += 1
+#         norms.append(data_points[-1][-1])
 
-print("mean norm")
-print(torch.tensor(norms).mean().item())
-print("unfit rate")
-print(not_fitted / args.dataset_num)
+# print("mean norm")
+# print(torch.tensor(norms).mean().item())
+# print("unfit rate")
+# print(not_fitted / args.dataset_num)
 
-data_path = convert_args_to_path(args)
-with open(data_path, "wb") as f:
-    pickle.dump(data_points, f)
+# data_path = convert_args_to_path(args)
+# with open(data_path, "wb") as f:
+#     pickle.dump(data_points, f)
+
+sample_dataset_known_function(20, 20, 6, 3)
 
