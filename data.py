@@ -169,7 +169,7 @@ def make_data_point_known_function(args):
         model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
         pred = predict(test_input, model, device)
 
-        diff = F.mse_loss(pred, test_label)
+        diff = F.mse_loss(pred, test_label.to(device)).item()
         if diff > args.min_diff:
             break
         else:
