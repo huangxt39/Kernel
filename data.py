@@ -1,5 +1,6 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import argparse
 import pickle
 import numpy as np
@@ -137,18 +138,7 @@ def predict(test_input, model, device):
 
     return pred
 
-
-def make_data_point(args):
-    if args.known_func:
-        train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree)
-    else:
-        train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
-    model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
-
-    model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
-    pred = predict(test_input, model, device)
-
+def compute_norm(model):
     num_param = 0
     param_sqaure_sum = 0
     for p in model.parameters():
@@ -156,8 +146,38 @@ def make_data_point(args):
             param_sqaure_sum += (p.data**2).sum().item()
             num_param += p.numel()
     param_norm = math.sqrt(param_sqaure_sum / num_param)
+    return param_norm
+
+def make_data_point(args):
+    train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
+    model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+    model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
+    pred = predict(test_input, model, device)
+
+    param_norm = compute_norm(model)
 
     return train_input, train_label, test_input, pred, final_loss, param_norm
+
+def make_data_point_known_function(args):
+    while True:
+        train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree)
+        model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+
+        model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
+        pred = predict(test_input, model, device)
+
+        diff = F.mse_loss(pred, test_label)
+        if diff > args.min_diff:
+            break
+        else:
+            print("not a good training set, try again")
+
+    param_norm = compute_norm(model)
+
+    return train_input, train_label, test_input, pred, diff, param_norm
 
 if __name__ == "__main__":
 
@@ -167,21 +187,30 @@ if __name__ == "__main__":
     assert args.arch is not None
 
     data_points = []
-    not_fitted = 0
+    sum_ = 0
     norms = []
     for i in tqdm(range(args.dataset_num)):
         if args.toy_data:
             data_points.append(make_toy_linear_data(args))
+        elif args.known_func:
+            data_points.append(make_data_point_known_function(args))
+            sum_ += data_points[-1][-2]
+            norms.append(data_points[-1][-1])
         else:
             data_points.append(make_data_point(args))
             if data_points[-1][-2] > args.threshold:
-                not_fitted += 1
+                sum_ += 1
             norms.append(data_points[-1][-1])
 
     print("mean norm")
     print(torch.tensor(norms).mean().item())
-    print("unfit rate")
-    print(not_fitted / args.dataset_num)
+    if args.toy_data:
+        print("ignore this")
+    elif args.known_func:
+        print("mean difference (bias of the model)")
+    else:
+        print("unfit rate")
+    print(sum_ / args.dataset_num)
 
     data_path = convert_args_to_path(args)
     with open(data_path, "wb") as f:
