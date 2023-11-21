@@ -9,8 +9,8 @@ from data import sample_dataset, make_data_point_known_function, train, predict
 
 parser = argparse.ArgumentParser()
 parser = add_shared_args(parser)
-parser.add_argument("--measure_num_dataset", type=int, default=50)
-parser.add_argument("--measure_models_per_dataset", type=int, default=20)
+parser.add_argument("--measure_num_dataset", type=int, default=10)  # 50
+parser.add_argument("--measure_models_per_dataset", type=int, default=10)  # 20
 args = parser.parse_args()
 assert args.arch is not None
 
@@ -30,9 +30,11 @@ for i in tqdm(range(args.measure_num_dataset)):
         pred = predict(test_input, model, device)
 
         predictions.append(pred)
+        print(pred)  
         del model
 
     predictions = torch.vstack(predictions)
+    print(predictions.var(dim=0))
     variance.append(predictions.var(dim=0).mean().item())
 
 variance = torch.tensor(variance).mean().item()

@@ -1,16 +1,20 @@
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import math
 
 class simpleTransformer(nn.Module):
-    def __init__(self, max_len, arch, shrink) -> None:
+    def __init__(self, max_len, arch, shrink, dropout=0.0) -> None:
         super().__init__()
         d_model, nhead, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)
 
-        self.make_pos_emb(d_model, max_len+1)   # consider cls
+        # self.make_pos_emb(d_model, max_len+1)   # consider cls
+        self.pe = nn.Parameter(torch.randn(1, max_len+1, d_model))
 
-        layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, dropout=0.0, batch_first=True)
+        self.dropout = nn.Dropout(dropout)
+
+        layer = nn.TransformerEncoderLayer(d_model=d_model, nhead=nhead, dim_feedforward=d_model*4, dropout=dropout, batch_first=True)
         self.encoder = nn.TransformerEncoder(encoder_layer=layer, num_layers=num_layers)
 
         self.head = nn.Linear(d_model, 1)
@@ -32,7 +36,7 @@ class simpleTransformer(nn.Module):
         cls_token = torch.full((inputs.size(0), 1), fill_value=2, dtype=inputs.dtype, device=inputs.device)
         x = torch.hstack([inputs, cls_token])
 
-        x = self.emb(x)
+        x = self.dropout(self.emb(x))
         x = x + self.pe
         x = self.encoder(x) # batch_size, seq_len+1, d_model
 
