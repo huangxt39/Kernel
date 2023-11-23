@@ -8,9 +8,13 @@ from tqdm import tqdm
 import math
 import itertools
 import random
+import multiprocessing
+from copy import deepcopy
 
 from models import modelClass, optClass
 from utils import add_shared_args, convert_args_to_path
+
+# torch.multiprocessing.set_sharing_strategy('file_system')
 
 def random_binary_no_repeat(power, num):
     sampled_numbers = torch.tensor(np.random.choice(2**power, num, replace=False))
@@ -148,23 +152,29 @@ def compute_norm(model):
     param_norm = math.sqrt(param_sqaure_sum / num_param)
     return param_norm
 
-def make_data_point(args):
+def make_data_point(args, gpu_idx=None):
     train_input, train_label, test_input = sample_dataset(args.train_num, args.test_num, args.space_dim)
     model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
-    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    if gpu_idx is None:
+        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    else:
+        device = f'cuda:{gpu_idx}'
 
     model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
     pred = predict(test_input, model, device)
 
     param_norm = compute_norm(model)
 
-    return train_input, train_label, test_input, pred, final_loss, param_norm
+    return train_input.numpy(), train_label.numpy(), test_input.numpy(), pred.to('cpu').numpy(), final_loss, param_norm
 
-def make_data_point_known_function(args):
+def make_data_point_known_function(args, gpu_idx=None):
     while True:
         train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree)
         model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
-        device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        if gpu_idx is None:
+            device = 'cuda' if torch.cuda.is_available() else 'cpu'
+        else:
+            device = f'cuda:{gpu_idx}'
 
         model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
         pred = predict(test_input, model, device)
@@ -177,31 +187,106 @@ def make_data_point_known_function(args):
 
     param_norm = compute_norm(model)
 
-    return train_input, train_label, test_input, pred, diff, param_norm
+    del model
+    return train_input.numpy(), train_label.numpy(), test_input.numpy(), pred.to('cpu').numpy(), diff, param_norm
+
+
+def make_data_point_child_process(args, data_num, gpu_idx, q):
+    for i in range(data_num):
+        if args.known_func:
+            q.put(make_data_point_known_function(args, gpu_idx))
+            # q.append(make_data_point_known_function(args, gpu_idx))
+        else:
+            q.put(make_data_point(args, gpu_idx))
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()   
-    parser = add_shared_args(parser)    
+    parser = add_shared_args(parser)   
+    parser.add_argument("--proc_num", type=str, help="4-2 means 4 gpus, 2 process per gpu") 
+
     args = parser.parse_args()
     assert args.arch is not None
 
     data_points = []
     sum_ = 0
     norms = []
-    for i in tqdm(range(args.dataset_num)):
-        if args.toy_data:
-            data_points.append(make_toy_linear_data(args))
-        elif args.known_func:
-            data_points.append(make_data_point_known_function(args))
-            sum_ += data_points[-1][-2]
-            norms.append(data_points[-1][-1])
-        else:
-            data_points.append(make_data_point(args))
-            if data_points[-1][-2] > args.threshold:
-                sum_ += 1
-            norms.append(data_points[-1][-1])
 
+    if args.proc_num is None:
+        for i in tqdm(range(args.dataset_num)):
+            if args.toy_data:
+                data_points.append(make_toy_linear_data(args))
+            elif args.known_func:
+                data_points.append(make_data_point_known_function(args))
+                sum_ += data_points[-1][-2]
+                norms.append(data_points[-1][-1])
+            else:
+                data_points.append(make_data_point(args))
+                if data_points[-1][-2] > args.threshold:
+                    sum_ += 1
+                norms.append(data_points[-1][-1])
+    else:
+        # to kill child processes 
+        # ps aux | grep python | grep xhuang | grep -v "grep python" | awk '{print $2}' | xargs kill -9
+        assert not args.toy_data
+        gpu_num, proc_per_gpu = tuple(map(lambda x: int(x), args.proc_num.split("-")))
+        assert gpu_num <= torch.cuda.device_count()
+        proc_num = gpu_num * proc_per_gpu
+        
+        dataset_num_per_proc = int(args.dataset_num / proc_num)
+        assert args.dataset_num == dataset_num_per_proc * proc_num
+
+        # import resource
+        # rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
+        # resource.setrlimit(resource.RLIMIT_NOFILE, (2048, rlimit[1]))
+
+        # with multiprocessing.Manager() as manager:
+        #     lis_ = manager.list([])
+        #     proc_list = []
+        #     for i in range(proc_num):
+        #         p = multiprocessing.Process(target=make_data_point_child_process, args=(args, dataset_num_per_proc, i//proc_per_gpu, lis_))
+        #         proc_list.append(p)
+
+        #     for p in proc_list:
+        #         p.start()
+
+        #     for p in proc_list:
+        #         p.join()
+
+        #     for item in lis_:
+        #         data_points.append(deepcopy(item))
+        #         if args.known_func:
+        #             sum_ += data_points[-1][-2]
+        #             norms.append(data_points[-1][-1])
+        #         else:
+        #             if data_points[-1][-2] > args.threshold:
+        #                 sum_ += 1
+        #             norms.append(data_points[-1][-1])
+
+        q = multiprocessing.Queue()
+
+        proc_list = []
+        for i in range(proc_num):
+            p = multiprocessing.Process(target=make_data_point_child_process, args=(args, dataset_num_per_proc, i//proc_per_gpu, q))
+            proc_list.append(p)
+
+        for p in proc_list:
+            p.start()
+
+        for i in tqdm(range(args.dataset_num)):
+            data_points.append(q.get())
+            if args.known_func:
+                sum_ += data_points[-1][-2]
+                norms.append(data_points[-1][-1])
+            else:
+                if data_points[-1][-2] > args.threshold:
+                    sum_ += 1
+                norms.append(data_points[-1][-1])
+
+        for p in proc_list:
+            p.join()
+
+    print("num datasets: ", len(data_points))
     print("mean norm")
     print(torch.tensor(norms).mean().item())
     if args.toy_data:
@@ -215,4 +300,4 @@ if __name__ == "__main__":
     data_path = convert_args_to_path(args)
     with open(data_path, "wb") as f:
         pickle.dump(data_points, f)
-
+    print("data dumped!")
