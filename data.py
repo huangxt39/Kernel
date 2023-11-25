@@ -189,7 +189,9 @@ def make_data_point_known_function(args, gpu_idx=None):
                     model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
                     model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
                     preds.append(predict(test_input, model, device))
-                pred = torch.vstack(preds).mean(dim=0) # pred is averaged pred
+                mag = torch.vstack(preds).abs().mean(dim=1)
+                pred = preds[mag.argmin()]
+                # pred = torch.vstack(preds).mean(dim=0) # pred is averaged pred
 
             break
         else:

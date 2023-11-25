@@ -81,59 +81,65 @@ class kernelHolder(nn.Module):
                                             dtype=self.feature_map.dtype, 
                                             device=self.feature_map.device))
 
-parser = argparse.ArgumentParser()
-parser = add_shared_args(parser)
-parser.add_argument("--batch_size", type=int, default=64)
-parser.add_argument("--num_step", type=int, default=20000)
-parser.add_argument("--max_thr", type=float, default=200)
-parser.add_argument("--lambda_", type=float, default=0.1)
-parser.add_argument("--kernel_lr", type=float, default=1e-3)
-args = parser.parse_args()
-assert args.arch is not None
+if __name__ == "__main__":
+
+    parser = argparse.ArgumentParser()
+    parser = add_shared_args(parser)
+    parser.add_argument("--batch_size", type=int, default=64)      # 64
+    parser.add_argument("--num_step", type=int, default=20000)  # 20000
+    parser.add_argument("--max_thr", type=float, default=200)
+    parser.add_argument("--lambda_", type=float, default=0.1)  # 0.1
+    parser.add_argument("--kernel_lr", type=float, default=1e-3)
+    args = parser.parse_args()
+    assert args.arch is not None
 
 
-kernel_dataset = kernelTrainingDataset(args)
-print(len(kernel_dataset))
-dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True)
+    kernel_dataset = kernelTrainingDataset(args)
+    print(len(kernel_dataset))
+    dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True)
 
-device = 'cuda' if torch.cuda.is_available() else 'cpu'
-# device = 'cpu' 
+    device = 'cuda' if torch.cuda.is_available() else 'cpu'
+    device = 'cpu' 
 
-kernel_holder = kernelHolder(args).to(device)
-print(kernel_holder.get_kernel_matrix().size())
+    kernel_holder = kernelHolder(args).to(device)
+    print(kernel_holder.get_kernel_matrix().size())
 
-optimizer = torch.optim.Adam(kernel_holder.parameters(), lr=args.kernel_lr)
 
-loss_func = nn.MSELoss()
+    optimizer = torch.optim.Adam(kernel_holder.parameters(), lr=args.kernel_lr)
+    # scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.3, patience=20, threshold=1e-3, verbose=True)
 
-flag = True
-loss_list = []
-total_steps = 0
-while flag:
-    for items in dataloader:
-        train_idx, train_label, test_idx, model_pred = (item.to(device) for item in items)
-        
-        kernel_pred = kernel_holder(train_idx, train_label, test_idx)
-        loss = loss_func(kernel_pred, model_pred)
+    loss_func = nn.MSELoss()
 
-        loss_list.append(loss.item())
+    flag = True
+    loss_list = []
+    total_steps = 0
+    while flag:
+        for items in dataloader:
+            train_idx, train_label, test_idx, model_pred = (item.to(device) for item in items)
             
-        optimizer.zero_grad()
-        loss.backward()
-        optimizer.step()
+            kernel_pred = kernel_holder(train_idx, train_label, test_idx)
+            loss = loss_func(kernel_pred, model_pred)
 
-        total_steps += 1
-        if total_steps % 50 == 0:
-            print(sum(loss_list)/len(loss_list))
-            loss_list = []
-        if total_steps >= args.num_step:
-            flag = False
-            break
-        
-if args.toy_data:
-    log_toy_estimate_perf(args, kernel_holder)
-else:
-    log_estimate_perf(kernel_pred, model_pred)
-# print(kernel_holder.feature_map.data[:, 1])
-# print(kernel_holder.feature_map.data[:, 5])
-# print(kernel_holder.feature_map.data[:, 9])
+            loss_list.append(loss.item())
+                
+            optimizer.zero_grad()
+            loss.backward()
+            optimizer.step()
+
+            total_steps += 1
+            if total_steps % 50 == 0:
+                print(sum(loss_list)/len(loss_list))
+                # scheduler.step(sum(loss_list)/len(loss_list))
+                loss_list = []
+            if total_steps >= args.num_step:
+                flag = False
+                break
+            
+    if args.toy_data:
+        log_toy_estimate_perf(args, kernel_holder)
+    else:
+        log_estimate_perf(kernel_pred, model_pred)
+    print(kernel_holder.get_kernel_matrix()[0])
+    # print(kernel_holder.feature_map.data[:, 1])
+    # print(kernel_holder.feature_map.data[:, 5])
+    # print(kernel_holder.feature_map.data[:, 9])
