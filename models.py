@@ -81,16 +81,17 @@ class DNN(nn.Module):
             layers.append(nn.ReLU())
             layers.append(nn.Linear(hidden_d, hidden_d))
         layers.append(nn.ReLU())
-        layers.append(nn.Linear(hidden_d, 1))
+        # layers.append(nn.Linear(hidden_d, 1))
 
         self.net = nn.Sequential(*layers)
+        self.head = nn.Linear(hidden_d, 1)
         for p in self.parameters():
             p.data = p.data * shrink
         # self.net[0].weight.data = self.net[0].weight.data * shrink
 
     def forward(self, inputs):
         # inputs: batch_size, seq_len
-        return self.net(inputs.float()).squeeze(-1)
+        return self.head(self.net(inputs.float())).squeeze(-1)
 
 modelClass = {"transformer": simpleTransformer, "lstm": simpleLSTM, "dnn": DNN}
 optClass = {'sgd': torch.optim.SGD, 'adam': torch.optim.Adam, 'adamw': torch.optim.AdamW}

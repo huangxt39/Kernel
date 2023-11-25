@@ -140,6 +140,40 @@ if __name__ == "__main__":
     else:
         log_estimate_perf(kernel_pred, model_pred)
     print(kernel_holder.get_kernel_matrix()[0])
-    # print(kernel_holder.feature_map.data[:, 1])
-    # print(kernel_holder.feature_map.data[:, 5])
-    # print(kernel_holder.feature_map.data[:, 9])
+
+    "===================== about h kernel ========================"
+
+    # compare with trained kernel
+    h_kernel = []
+    data_path = convert_args_to_path(args)
+
+    with open(data_path, "rb") as f:
+        data = pickle.load(f)
+
+        for item in data:
+            h_kernel.append(item[-1])
+    h_kernel = torch.cat(list(map(lambda x: x.unsqueeze(0), h_kernel)), dim=0).mean(dim=0)
+    
+    trained_kernel = kernel_holder.get_kernel_matrix()
+
+    h_kernel /= torch.linalg.matrix_norm(h_kernel)
+    trained_kernel /= torch.linalg.matrix_norm(trained_kernel)
+
+    print(h_kernel[0])
+    print(trained_kernel[0])
+
+    # use h kernel to match model prediction
+    loss_list = []
+    for i in tqdm(range(len(kernel_dataset))):
+        train_idx, train_label, test_idx, model_pred = kernel_dataset[i]
+        
+        kernel_m_train = h_kernel[train_idx].T[train_idx]
+        kernel_m_train_inv = torch.inverse(kernel_m_train)
+
+        alpha = torch.mm(kernel_m_train_inv, train_label.unsqueeze(-1)) 
+
+        kernel_m_test = h_kernel[test_idx].T[train_idx] # assume all test idx not in train idx
+        kernel_pred = torch.mm(alpha.T, kernel_m_test) 
+
+        loss_list.append(loss_func(kernel_pred, model_pred))
+    print(sum(loss_list) / len(loss_list))
