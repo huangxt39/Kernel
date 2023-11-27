@@ -17,6 +17,8 @@ from utils import add_shared_args, convert_args_to_path
 
 from data import sample_dataset, sample_dataset_known_function, train, predict, compute_norm
 
+torch.set_printoptions(sci_mode=False)
+
 def get_h_kernel(args, model, device):
     sampled_numbers = torch.arange(2**args.space_dim)
 
@@ -175,7 +177,12 @@ if __name__ == "__main__":
         print("unfit rate")
     print(sum_ / args.dataset_num)
 
+    h_kernel = torch.cat(list(map(lambda x: x.unsqueeze(0), h_kernel)), dim=0).mean(dim=0)
+    h_kernel /= torch.linalg.matrix_norm(h_kernel)
+    print(h_kernel[0])
+
     data_path = convert_args_to_path(args)
+    data_path = data_path[:-4] + "h_kernel" + data_path[-4:]
     with open(data_path, "wb") as f:
         pickle.dump(data_points, f)
     print("data dumped!")

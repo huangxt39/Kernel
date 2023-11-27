@@ -15,6 +15,8 @@ import os
 from models import modelClass, optClass
 from utils import add_shared_args, convert_args_to_path
 
+torch.set_printoptions(sci_mode=False)
+
 def random_binary_no_repeat(power, num):
     sampled_numbers = torch.tensor(np.random.choice(2**power, num, replace=False))
 
@@ -73,7 +75,7 @@ def sample_dataset(train_num, test_num, space_dim):
 
     return train_input, train_label, test_input
 
-def sample_dataset_known_function(train_num, test_num, space_dim, max_degree, term_per_degree=3):
+def sample_dataset_known_function(train_num, test_num, space_dim, max_degree, term_per_degree):
     # sample a function
     assert max_degree <= space_dim
     func_terms = []
@@ -121,13 +123,15 @@ def train(train_input, train_label, model, optClass, device, args):
 
         loss_list.append(loss.item())
         if loss.item() < args.threshold:
+            print("converged")
             break
 
         optimizer.zero_grad()
         loss.backward()
         optimizer.step()
     else:
-        print(loss_list[-1])
+        # print(loss_list[-1])
+        pass
 
     return model, loss_list[-1]
 
@@ -160,7 +164,7 @@ def make_data_point(args, gpu_idx=None):
 
     pred = []
     for i in range(args.avg_num):
-        model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
+        model = modelClass[args.model](args.space_dim, args.arch, args.shrink, args.dropout)
         model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
         pred.append(predict(test_input, model, device))
     pred = torch.vstack(pred).mean(dim=0)
@@ -171,14 +175,16 @@ def make_data_point(args, gpu_idx=None):
 
 def make_data_point_known_function(args, gpu_idx=None):
     while True:
-        train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree)
-        model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
+        train_input, train_label, test_input, test_label = sample_dataset_known_function(args.train_num, args.test_num, args.space_dim, args.max_degree, args.term_per_degree)
+        
+        model = modelClass[args.model](args.space_dim, args.arch, args.shrink, args.dropout)
         if gpu_idx is None:
             device = 'cuda' if torch.cuda.is_available() else 'cpu'
         else:
             device = f'cuda:{gpu_idx}'
 
-        model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
+        model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
+        
         pred = predict(test_input, model, device)
 
         diff = F.mse_loss(pred, test_label.to(device)).item()
@@ -186,8 +192,8 @@ def make_data_point_known_function(args, gpu_idx=None):
             if args.avg_num > 1:
                 preds = [pred]
                 for i in range(args.avg_num-1):
-                    model = modelClass[args.model](args.space_dim, args.arch, args.shrink)
-                    model, _ = train(train_input, train_label, model, optClass[args.optimizer], device, args)
+                    model = modelClass[args.model](args.space_dim, args.arch, args.shrink, args.dropout)
+                    model, final_loss = train(train_input, train_label, model, optClass[args.optimizer], device, args)
                     preds.append(predict(test_input, model, device))
                 pred = torch.vstack(preds).mean(dim=0) # pred is averaged pred
 
@@ -195,9 +201,11 @@ def make_data_point_known_function(args, gpu_idx=None):
         else:
             print("not a good training set, try again")
 
-    param_norm = compute_norm(model)
-
-    return train_input, train_label, test_input, pred.to('cpu'), diff, param_norm
+    # param_norm = compute_norm(model)
+    if args.low_rank:
+        return train_input, train_label, test_input, predict(train_input, model, device).to('cpu'), pred.to('cpu'), diff, final_loss
+    else:
+        return train_input, train_label, test_input, pred.to('cpu'), diff, final_loss
 
 
 def make_data_point_child_process(args, data_num, gpu_idx, q):
@@ -273,12 +281,12 @@ if __name__ == "__main__":
             p.join()
 
     print("num datasets: ", len(data_points))
-    print("mean norm")
+    print("mean train loss")
     print(torch.tensor(norms).mean().item())
     if args.toy_data:
         print("ignore this")
     elif args.known_func:
-        print("mean difference (bias of the model)")
+        print("mean difference (bias of the model) / test loss")
     else:
         print("unfit rate")
     print(sum_ / args.dataset_num)

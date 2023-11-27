@@ -4,7 +4,7 @@ import torch.nn.functional as F
 import math
 
 class simpleTransformer(nn.Module):
-    def __init__(self, max_len, arch, shrink, dropout=0.0) -> None:
+    def __init__(self, max_len, arch, shrink, dropout) -> None:
         super().__init__()
         d_model, nhead, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)
@@ -47,14 +47,18 @@ class simpleTransformer(nn.Module):
         return x
     
 class simpleLSTM(nn.Module):
-    def __init__(self, max_len, d_model=64, num_layers=3) -> None:
+    def __init__(self, max_len, arch, shrink) -> None:
         super().__init__()
+        d_model, num_layers = tuple(map(lambda x: int(x), arch.split("-")))
 
         self.emb = nn.Embedding(num_embeddings=3, embedding_dim=d_model)
 
         self.lstm = nn.LSTM(d_model, d_model, num_layers, batch_first=True)
 
         self.head = nn.Linear(d_model, 1)
+
+        for p in self.parameters():
+            p.data = p.data * shrink
 
     def forward(self, inputs):
         # inputs: batch_size, seq_len
@@ -65,7 +69,8 @@ class simpleLSTM(nn.Module):
         x, (h, c) = self.lstm(x) # batch_size, seq_len+1, d_model
 
         x = x[:, -1, :]
-        x = torch.sigmoid(self.head(x).squeeze(-1))
+        # x = torch.sigmoid(self.head(x).squeeze(-1))
+        x = self.head(x).squeeze(-1)
 
         return x
     
@@ -90,6 +95,8 @@ class DNN(nn.Module):
         # self.net[0].weight.data = self.net[0].weight.data * shrink
 
     def forward(self, inputs):
+        if inputs.min() == 0:
+            inputs = inputs.float() * 2 - 1
         # inputs: batch_size, seq_len
         return self.head(self.net(inputs.float())).squeeze(-1)
 

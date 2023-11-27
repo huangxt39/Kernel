@@ -31,8 +31,13 @@ class kernelTrainingDataset(Dataset):
         self.instances = []
         # convert bits to integers
         temp = 2**torch.arange(args.space_dim-1, -1, -1).unsqueeze(0)
-        for train_input, train_label, test_input, pred, final_loss, norm in data:
-            
+        for item in data:
+            if args.low_rank:
+                train_input, train_label, test_input, pred_train, pred, final_loss, norm = item
+                pred = torch.hstack([pred_train, pred])
+            else:
+                train_input, train_label, test_input, pred, final_loss, norm = item
+
             train_idx = (train_input * temp).sum(dim=1)
             test_idx = (test_input * temp).sum(dim=1)
 
@@ -50,9 +55,7 @@ class kernelHolder(nn.Module):
     def __init__(self, args):
         super().__init__()
         input_space = 2**args.space_dim
-        feature_len = args.space_dim if args.toy_data else 2**args.space_dim 
-        # feature_len = args.space_dim 0.03
-        self.feature_map = nn.Parameter(torch.randn(feature_len, input_space))    # columns are phi(x)    /(2**(space_dim/4))
+        self.feature_map = nn.Parameter(torch.randn(args.feature_len, input_space))    # columns are phi(x)    /(2**(space_dim/4))
         self.max_threshold = args.max_thr
         self.lambda_ = args.lambda_
 
@@ -70,6 +73,27 @@ class kernelHolder(nn.Module):
         kernel_pred = torch.bmm(alpha.transpose(1,2), kernel_m_test) # / math.sqrt(train_idx.size(1))
 
         return kernel_pred.squeeze(1)
+    
+    def forward_low_rank(self, train_idx, train_label, test_idx):
+        phi_x = self.feature_map.T[train_idx]
+        kernel_m_train = torch.bmm(phi_x, phi_x.transpose(1,2))
+        
+        # kernel_m_train_inv = torch.inverse(kernel_m_train)  # may also work, may converge to something close to low rank but not low rank
+        
+        def check_grad(grad):
+            assert grad.isnan().sum() == 0
+            assert grad.isinf().sum() == 0
+
+        kernel_m_train.register_hook(check_grad)
+        kernel_m_train_inv = torch.linalg.pinv(kernel_m_train, hermitian=True)
+
+        alpha = torch.bmm(kernel_m_train_inv, train_label.unsqueeze(-1)) # / math.sqrt(train_idx.size(1))
+
+        train_test_idx = torch.hstack([train_idx, test_idx])
+        kernel_m_train_test = torch.bmm(phi_x, self.feature_map.T[train_test_idx].transpose(1,2)) # assume all test idx not in train idx
+        kernel_pred = torch.bmm(alpha.transpose(1,2), kernel_m_train_test) # / math.sqrt(train_idx.size(1))
+
+        return kernel_pred.squeeze(1)   # prediction for both train and test
     
     def clip(self):
         self.feature_map.data.clamp_(min= -self.max_threshold, max=self.max_threshold)
@@ -90,8 +114,11 @@ if __name__ == "__main__":
     parser.add_argument("--max_thr", type=float, default=200)
     parser.add_argument("--lambda_", type=float, default=0.1)  # 0.1
     parser.add_argument("--kernel_lr", type=float, default=1e-3)
+    parser.add_argument("--feature_len", type=int)
     args = parser.parse_args()
     assert args.arch is not None
+    if args.feature_len is None:
+        args.feature_len = 2**args.space_dim
 
 
     kernel_dataset = kernelTrainingDataset(args)
@@ -99,7 +126,7 @@ if __name__ == "__main__":
     dataloader = DataLoader(kernel_dataset, batch_size=args.batch_size, shuffle=True)
 
     device = 'cuda' if torch.cuda.is_available() else 'cpu'
-    device = 'cpu' 
+    # device = 'cpu' 
 
     kernel_holder = kernelHolder(args).to(device)
     print(kernel_holder.get_kernel_matrix().size())
@@ -117,7 +144,10 @@ if __name__ == "__main__":
         for items in dataloader:
             train_idx, train_label, test_idx, model_pred = (item.to(device) for item in items)
             
-            kernel_pred = kernel_holder(train_idx, train_label, test_idx)
+            if args.low_rank:
+                kernel_pred = kernel_holder.forward_low_rank(train_idx, train_label, test_idx)
+            else:
+                kernel_pred = kernel_holder(train_idx, train_label, test_idx)
             loss = loss_func(kernel_pred, model_pred)
 
             loss_list.append(loss.item())
@@ -143,37 +173,37 @@ if __name__ == "__main__":
 
     "===================== about h kernel ========================"
 
-    # compare with trained kernel
-    h_kernel = []
-    data_path = convert_args_to_path(args)
+    # # compare with trained kernel
+    # h_kernel = []
+    # data_path = convert_args_to_path(args)
 
-    with open(data_path, "rb") as f:
-        data = pickle.load(f)
+    # with open(data_path, "rb") as f:
+    #     data = pickle.load(f)
 
-        for item in data:
-            h_kernel.append(item[-1])
-    h_kernel = torch.cat(list(map(lambda x: x.unsqueeze(0), h_kernel)), dim=0).mean(dim=0)
+    #     for item in data:
+    #         h_kernel.append(item[-1])
+    # h_kernel = torch.cat(list(map(lambda x: x.unsqueeze(0), h_kernel)), dim=0).mean(dim=0)
     
-    trained_kernel = kernel_holder.get_kernel_matrix()
+    # trained_kernel = kernel_holder.get_kernel_matrix()
 
-    h_kernel /= torch.linalg.matrix_norm(h_kernel)
-    trained_kernel /= torch.linalg.matrix_norm(trained_kernel)
+    # h_kernel /= torch.linalg.matrix_norm(h_kernel)
+    # trained_kernel /= torch.linalg.matrix_norm(trained_kernel)
 
-    print(h_kernel[0])
-    print(trained_kernel[0])
+    # print(h_kernel[0])
+    # print(trained_kernel[0])
 
-    # use h kernel to match model prediction
-    loss_list = []
-    for i in tqdm(range(len(kernel_dataset))):
-        train_idx, train_label, test_idx, model_pred = kernel_dataset[i]
+    # # use h kernel to match model prediction
+    # loss_list = []
+    # for i in tqdm(range(len(kernel_dataset))):
+    #     train_idx, train_label, test_idx, model_pred = kernel_dataset[i]
         
-        kernel_m_train = h_kernel[train_idx].T[train_idx]
-        kernel_m_train_inv = torch.inverse(kernel_m_train)
+    #     kernel_m_train = h_kernel[train_idx].T[train_idx]
+    #     kernel_m_train_inv = torch.inverse(kernel_m_train)
 
-        alpha = torch.mm(kernel_m_train_inv, train_label.unsqueeze(-1)) 
+    #     alpha = torch.mm(kernel_m_train_inv, train_label.unsqueeze(-1)) 
 
-        kernel_m_test = h_kernel[test_idx].T[train_idx] # assume all test idx not in train idx
-        kernel_pred = torch.mm(alpha.T, kernel_m_test) 
+    #     kernel_m_test = h_kernel[test_idx].T[train_idx] # assume all test idx not in train idx
+    #     kernel_pred = torch.mm(alpha.T, kernel_m_test) 
 
-        loss_list.append(loss_func(kernel_pred, model_pred))
-    print(sum(loss_list) / len(loss_list))
+    #     loss_list.append(loss_func(kernel_pred, model_pred))
+    # print(sum(loss_list) / len(loss_list))
